@@ -12,5 +12,5 @@ class TestContrastiveDataGenerator(TestCase):
         g = ContrastiveDataGenerator(categories=categories, data_pth='../data/train_curated')
 
         for i in range(5):
-            for e in tqdm(g):
+            for (context_batch, contrastive_batch) in tqdm(g):
                 pass

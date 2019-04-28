@@ -5,6 +5,8 @@ from keras.optimizers import SGD, adam
 from keras import backend as K
 import tensorflow as tf
 
+from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+
 def get_encoder(x, emb_size):
     """
     Create encoder
@@ -76,8 +78,8 @@ def loss_fn(y_true, y_pred):
     """
     Contrstive loss function (eq. 4 from the original article)
     # https://datascience.stackexchange.com/questions/25029/custom-loss-function-with-additional-parameter-in-keras
-    :param y_true: labels (0, 1), where 0 means the sample was drawn from noisy distribution; 1 means the sample was drawn
-    from the target distribution.
+    :param y_true: labels (0, 1), where 0 means the sample was drawn from noisy distribution; 1 means the sample was
+    drawn from the target distribution.
     :param y_pred: density ratio (f value from the original article)
     :return:
     """
@@ -87,23 +89,25 @@ def loss_fn(y_true, y_pred):
     return K.mean(v)
 
 
-def get_model():
+def get_model(chunk_size, context_samples=100, contrastive_samples=10, emd_size=512):
+    """
+
+    :param chunk_size:
+    :param context_samples:
+    :param contrastive_samples:
+    :param emd_size:
+    :return:
+    """
     K.set_learning_phase(1)
-    terms = 100
-    predict_terms = 12
-    n_samples = 10
-    chunk_size = [1024, 1]
-    emd_size = 512
 
     # Define encoder model
-    encoder_input = Input(shape=chunk_size)
+    encoder_input = Input(shape=[chunk_size, 1])
     encoder_model = Model(encoder_input, get_encoder(encoder_input, emb_size=emd_size), name='encoder')
     encoder_model.summary()
 
     # Define rest of the model
-    x_input = Input([terms]+chunk_size, name='context_data')
-    y_input = Input([n_samples]+chunk_size, name='contrastive_data')
-    y_labels = Input([n_samples], name='labels')
+    x_input = Input(shape=[context_samples, chunk_size, 1], name='context_data')
+    y_input = Input(shape=[contrastive_samples, chunk_size], name='contrastive_data')
 
     # Workaround context
     x_encoded = TimeDistributed(encoder_model, name='Historical_embeddings')(x_input)
@@ -117,14 +121,47 @@ def get_model():
     f = Lambda(lambda x: K.exp(Dot(axes=1)(x)), name='multiplication')([z1, z2])
 
     # Model
-    cpc_model = Model(inputs=[x_input, y_input, y_labels], outputs=f)
+    cpc_model = Model(inputs=[x_input, y_input], outputs=f) #, y_labels
     cpc_model.summary()
     return cpc_model
 
+
 def train():
-    m = get_model()
+    # params
+    chunk_size = 4096
+    context_samples = 5
+    contrastive_samples = 1
+    emd_size = 512
+
+    params = {
+        'chunk_size': 4096,
+        'context_samples': 5,
+        'contractive_samples': 1
+    }
+
+    model_params = {'chunk_size': chunk_size,
+                    'context_samples': context_samples,
+                    'contrastive_samples': contrastive_samples,
+                    'emd_size': emd_size}
+
+    categories = ['Marimba_and_xylophone', 'Scissors', 'Gong', 'Printer', 'Keys_jangling', 'Zipper_(clothing)',
+                  'Computer_keyboard', 'Finger_snapping']
+
+    gen_params = {'categories': categories,
+                  'data_pth': '../data/train_curated',
+                  }
+
+        data_pth='../data', batch_size=10, shuffle=True, seed=42, categories=list(), normalize=True,
+                 fs=16000, chunk_size=4096, context_samples=5, contrastive_samples=1}
+
+
+    model = get_model(model_params)
     # Compile model
-    m.compile(loss=loss_fn, optimizer=adam())
+    model.compile(loss=loss_fn, optimizer=adam())
+
+    data_gen = ContrastiveDataGenerator()
+    model.fit_generator()
 
 if __name__=='__main__':
+    setup_logging('train.log')
     train()

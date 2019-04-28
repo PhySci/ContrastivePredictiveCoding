@@ -5,7 +5,8 @@ import numpy as np
 import librosa
 import os
 import logging
-import  warnings
+import warnings
+from random import shuffle
 
 class SignalGenerator(Sequence):
 
@@ -120,11 +121,7 @@ def setup_logging(fname, level=logging.DEBUG):
     :param level: log level
     :return:
     """
-
-
     formatter = logging.Formatter('[%(levelname)s]%(asctime)s:%(name)s:%(message)s')
-
-
     logger = logging.getLogger()
     logger.setLevel(level)
 
@@ -142,8 +139,8 @@ def setup_logging(fname, level=logging.DEBUG):
 
 class ContrastiveDataGenerator(Sequence):
 
-    def __init__(self, data_pth='../data', batch_size=10, shuffle=True, seed=42, categories = list(), normalize=True,
-                 fs=16000, chunck_size=4096, context_samples=5, contrastive_samples=1):
+    def __init__(self, data_pth='../data', batch_size=10, shuffle=True, seed=42, categories=list(), normalize=True,
+                 fs=16000, chunk_size=4096, context_samples=5, contrastive_samples=1):
         """
         Constructor
 
@@ -165,16 +162,16 @@ class ContrastiveDataGenerator(Sequence):
         self.seed = seed
         self.context_samples = int(context_samples)
         self.contrastive_samples = int(contrastive_samples)
-        self.chunck_size = int(chunck_size)
+        self.chunk_size = int(chunk_size)
 
         # Extract list of files from csv
         file_list = pd.read_csv(os.path.join(data_pth, 'train_curated.csv'))
-        print(file_list.shape)
-        self.file_list = file_list.query('labels in @categories')
-        self.list_sz = self.file_list.shape[0]
-        print(self.list_sz)
-
-        self.max_it = int(np.ceil(self.file_list.shape[0] / self.batch_size))
+        if len(categories) == 0:
+            self.file_list = file_list
+        else:
+            self.file_list = file_list.query('labels in @categories').fname.tolist()
+        self.list_sz = len(self.file_list)
+        self.max_it = int(np.ceil(self.list_sz / self.batch_size))
 
     def __len__(self):
         return self.max_it
@@ -184,7 +181,9 @@ class ContrastiveDataGenerator(Sequence):
         Performs at the end of each epoch
         :return:
         """
-        self.file_list = self.file_list.sample(frac=1)
+        l = self.file_list
+        shuffle(l)
+        self.file_list = l
 
     def __getitem__(self, item):
         """
@@ -201,23 +200,25 @@ class ContrastiveDataGenerator(Sequence):
         :return:
         """
         pos = np.minimum(it * self.batch_size, self.list_sz)
-        frames = (self.contrastive_samples+self.context_samples)*self.chunck_size
+        frames = (self.contrastive_samples+self.context_samples)*self.chunk_size
 
         i = 0
-        context_batch = np.zeros([self.batch_size, self.context_samples, self.chunck_size])
-        contrastive_batch = np.zeros([self.batch_size, self.context_samples, self.chunck_size])
+        context_batch = np.zeros([self.batch_size, self.context_samples, self.chunk_size])
+        contrastive_batch = np.zeros([self.batch_size, self.contrastive_samples, self.chunk_size])
 
         while i < self.batch_size:
-            fname = self.file_list.iloc[pos].fname
+            fname = self.file_list[pos]
             pos = (pos+1) % self.list_sz
             signal, sr = librosa.load(os.path.join(self.data_pth, fname), sr=self.fs)
             if signal.shape[0]-frames < 0:
                 logging.getLogger(__name__).info(' File {:s} is too short'.format(fname))
             else:
                 random_shift = np.random.randint(signal.shape[0]-frames)
-                batch = signal[random_shift:(frames + random_shift)].reshape((-1, self.chunck_size), order='C')
+                batch = signal[random_shift:(frames + random_shift)].reshape((-1, self.chunk_size), order='C')
                 context_batch[i, :, :] = batch[:self.context_samples, :]
                 contrastive_batch[i, :, :] = batch[self.context_samples:self.context_samples+self.contrastive_samples, :]
                 i +=1
 
-        return (context_batch)
+        # generate labels
+        labels = None
+        return ([context_batch, contrastive_batch], labels)
