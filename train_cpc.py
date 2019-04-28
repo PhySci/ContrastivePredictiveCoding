@@ -52,6 +52,8 @@ def network_prediction(context, code_size, predict_terms):
     """
     outputs = []
     for i in range(predict_terms):
+
+
         outputs.append(Dense(units=code_size, activation="linear", name='z_t_{i}'.format(i=i))(context))
 
     if len(outputs) == 1:
@@ -60,12 +62,35 @@ def network_prediction(context, code_size, predict_terms):
         output = Lambda(lambda x: K.stack(x, axis=1))(outputs)
     return output
 
+def eq3(x, labels, context, encoder, code_size):
+    """
+
+    :param z:
+    :param c: context
+    :return:
+    """
+    z = TimeDistributed(encoder, name='Contrastive_embeddings')(x)
+    z1 = K.permute_dimensions(z, (0, 2, 1))
+    z2 = Dense(units=code_size)(context)
+    f = Dot(axes=1)([z1, z2])
+    f = K.exp(f)
+
+    t2 = K.dot(f, labels)
+    top = K.sum(t2, axis=1)
+    bottom = K.sum(f, axis=1)
+    v = K.log(top/bottom)
+    loss = K.mean(v)
+    return loss
+
+
+
 def get_model():
     K.set_learning_phase(1)
     terms = 100
     predict_terms = 12
+    n_samples = 10
     chunk_size = [1024, 1]
-    emd_size = 256
+    emd_size = 512
 
     # Define encoder model
     encoder_input = Input(shape=chunk_size)
@@ -73,18 +98,18 @@ def get_model():
     #encoder_model.summary()
 
     # Define rest of model
-    x_input = Input([terms]+chunk_size, name='Historical data')
-    y_input = Input([predict_terms]+chunk_size, name='Contrastive data')
+    x_input = Input([terms]+chunk_size, name='Historical_data')
+    y_input = Input([n_samples]+chunk_size, name='Contrastive_data')
+    y_labels = Input([n_samples])
 
     # Workaround context
-    x_encoded = TimeDistributed(encoder_model, name='Historical embeddings')(x_input)
+    x_encoded = TimeDistributed(encoder_model, name='Historical_embeddings')(x_input)
     context = network_autoregressive(x_encoded, emd_size)
 
     # Make predictions for the next predict_terms timesteps
-    emb_pr = network_prediction(context, emd_size, predict_terms)
+    #emb_pr = network_prediction(context, emd_size, predict_terms)
     # get embeddings (it's like a ground truth)
-    emb = TimeDistributed(encoder_model, name='Contrastive embeddings')(y_input)
-
+    d = eq3(y_input, y_labels, context, encoder_model, emd_size)
     # Вот теперь здесь надо посчитать косунусное расстояние между эмбедингами
 
     def cosine_distance(vests):
@@ -97,11 +122,11 @@ def get_model():
         shape1, shape2 = shapes
         return (shape1[0], 1)
 
-    distance = Lambda(cosine_distance, output_shape=cos_dist_output_shape)([emb_pr, emb])
+    #distance = Lambda(cosine_distance, output_shape=cos_dist_output_shape)([emb_pr, emb])
     # и функцию потерь!
 
     # Model
-    cpc_model = Model(inputs=[x_input, y_input], outputs=distance)
+    cpc_model = Model(inputs=[x_input, y_input], outputs=d)
     cpc_model.summary()
     return cpc_model
 
