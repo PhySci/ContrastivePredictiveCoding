@@ -1,6 +1,10 @@
 from unittest import TestCase
 from tqdm import tqdm
-from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+
+try:
+    from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+except ImportError:
+    from ContrastivePredictiveCoding.utils import ContrastiveDataGenerator, setup_logging
 
 categories = ['Marimba_and_xylophone', 'Scissors', 'Gong', 'Printer', 'Keys_jangling', 'Zipper_(clothing)',
               'Computer_keyboard', 'Finger_snapping']

@@ -7,6 +7,7 @@ import os
 import logging
 import warnings
 from random import shuffle
+import numpy as np
 
 class SignalGenerator(Sequence):
 
@@ -167,7 +168,7 @@ class ContrastiveDataGenerator(Sequence):
         # Extract list of files from csv
         file_list = pd.read_csv(os.path.join(data_pth, 'train_curated.csv'))
         if len(categories) == 0:
-            self.file_list = file_list
+            self.file_list = file_list.fname.tolist()
         else:
             self.file_list = file_list.query('labels in @categories').fname.tolist()
         self.list_sz = len(self.file_list)
@@ -219,6 +220,10 @@ class ContrastiveDataGenerator(Sequence):
                 contrastive_batch[i, :, :] = batch[self.context_samples:self.context_samples+self.contrastive_samples, :]
                 i +=1
 
-        # generate labels
-        labels = None
-        return ([context_batch, contrastive_batch], labels)
+        # shuffle data
+        #idx = np.random.choice(range(self.batch_size), self.batch_size, replace=False)
+        #contrastive_batch = contrastive_batch[idx, :, :]
+        labels=np.zeros([self.batch_size, self.batch_size])
+        labels=np.ones([self.batch_size, self.batch_size])
+        #labels[range(self.batch_size), idx] = 1
+        return ([context_batch[:, :, :, np.newaxis], contrastive_batch[:, :, :, np.newaxis]], labels)

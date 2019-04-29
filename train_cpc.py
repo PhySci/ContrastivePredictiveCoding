@@ -5,7 +5,10 @@ from keras.optimizers import SGD, adam
 from keras import backend as K
 import tensorflow as tf
 
-from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+try:
+    from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+except ImportError:
+    from ContrastivePredictiveCoding.utils import ContrastiveDataGenerator, setup_logging
 
 def get_encoder(x, emb_size):
     """
@@ -53,27 +56,6 @@ def network_autoregressive(x, code_size):
     return GRU(units=code_size, return_sequences=False, name='ar_context')(x)
 
 
-def network_prediction(context, code_size, predict_terms):
-    """
-    Predict embeddings of the future steps from the context
-    :param context:
-    :param code_size:
-    :param predict_terms:
-    :return:
-    """
-    outputs = []
-    for i in range(predict_terms):
-
-
-        outputs.append(Dense(units=code_size, activation="linear", name='z_t_{i}'.format(i=i))(context))
-
-    if len(outputs) == 1:
-        output = Lambda(lambda x: K.expand_dims(x, axis=1))(outputs[0])
-    else:
-        output = Lambda(lambda x: K.stack(x, axis=1))(outputs)
-    return output
-
-
 def loss_fn(y_true, y_pred):
     """
     Contrstive loss function (eq. 4 from the original article)
@@ -84,9 +66,9 @@ def loss_fn(y_true, y_pred):
     :return:
     """
     divident = K.sum(K.dot(y_true, y_pred), axis=1)
-    divider = K.sum(y_pred, axis=1)
+    divider = K.sum(y_pred, axis=1) + K.epsilon()
     v = K.log(divident / divider)
-    return K.mean(v)
+    return -v
 
 
 def get_model(chunk_size, context_samples=100, contrastive_samples=10, emd_size=512):
@@ -107,7 +89,7 @@ def get_model(chunk_size, context_samples=100, contrastive_samples=10, emd_size=
 
     # Define rest of the model
     x_input = Input(shape=[context_samples, chunk_size, 1], name='context_data')
-    y_input = Input(shape=[contrastive_samples, chunk_size], name='contrastive_data')
+    y_input = Input(shape=[contrastive_samples, chunk_size, 1], name='contrastive_data')
 
     # Workaround context
     x_encoded = TimeDistributed(encoder_model, name='Historical_embeddings')(x_input)
@@ -128,16 +110,12 @@ def get_model(chunk_size, context_samples=100, contrastive_samples=10, emd_size=
 
 def train():
     # params
+    K.set_learning_phase(1)
     chunk_size = 4096
     context_samples = 5
     contrastive_samples = 1
     emd_size = 512
-
-    params = {
-        'chunk_size': 4096,
-        'context_samples': 5,
-        'contractive_samples': 1
-    }
+    batch_size = 16
 
     model_params = {'chunk_size': chunk_size,
                     'context_samples': context_samples,
@@ -147,20 +125,23 @@ def train():
     categories = ['Marimba_and_xylophone', 'Scissors', 'Gong', 'Printer', 'Keys_jangling', 'Zipper_(clothing)',
                   'Computer_keyboard', 'Finger_snapping']
 
+    categories = ()
     gen_params = {'categories': categories,
                   'data_pth': '../data/train_curated',
-                  }
+                  'batch_size': batch_size,
+                  'shuffle': True,
+                  'seed': 42,
+                  'chunk_size': chunk_size,
+                  'context_samples': context_samples,
+                  'contrastive_samples': contrastive_samples}
 
-        data_pth='../data', batch_size=10, shuffle=True, seed=42, categories=list(), normalize=True,
-                 fs=16000, chunk_size=4096, context_samples=5, contrastive_samples=1}
 
-
-    model = get_model(model_params)
+    model = get_model(**model_params)
     # Compile model
     model.compile(loss=loss_fn, optimizer=adam())
 
-    data_gen = ContrastiveDataGenerator()
-    model.fit_generator()
+    data_gen = ContrastiveDataGenerator(**gen_params)
+    model.fit_generator(generator=data_gen, epochs=10)
 
 if __name__=='__main__':
     setup_logging('train.log')
