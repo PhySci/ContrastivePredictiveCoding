@@ -10,7 +10,7 @@ import os
 import datetime
 
 try:
-    from my_cpc.utils import ContrastiveDataGenerator, setup_logging
+    from utils import ContrastiveDataGenerator, setup_logging
 except ImportError:
     from ContrastivePredictiveCoding.utils import ContrastiveDataGenerator, setup_logging
 
@@ -125,7 +125,7 @@ def train():
     context_samples = 5
     contrastive_samples = 1
     emd_size = 512
-    batch_size = 16
+    batch_size = 32
 
     params = {'model_name': 'cpc1'}
     params.update({'checkpointer': {'verbose': 1,
@@ -160,12 +160,12 @@ def train():
     callbacks = [tensorboard, checkpointer]
     model = get_model(**model_params)
 
-    # Compile model
-    model.compile(loss=loss_fn, optimizer=adam(lr=1e-5))
-
     data_gen = ContrastiveDataGenerator(**gen_params)
-    model.fit_generator(generator=data_gen, epochs=10, callbacks=callbacks, steps_per_epoch=30)
+
+    model.compile(loss=loss_fn, optimizer=adam(lr=1e-5))
+    model.fit_generator(generator=data_gen, epochs=10, callbacks=callbacks)
 
 if __name__=='__main__':
+    os.environ["CUDA_VISIBLE_DEVICES"] = '2'
     setup_logging('train.log')
     train()
