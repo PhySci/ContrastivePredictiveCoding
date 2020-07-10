@@ -125,7 +125,7 @@ def train():
     context_samples = 5
     contrastive_samples = 1
     emd_size = 512
-    batch_size = 32
+    batch_size = 8
 
     params = {'model_name': 'cpc1'}
     params.update({'checkpointer': {'verbose': 1,
@@ -138,8 +138,8 @@ def train():
                     'contrastive_samples': contrastive_samples,
                     'emd_size': emd_size}
 
-    categories = ['Marimba_and_xylophone', 'Scissors', 'Gong', 'Printer', 'Keys_jangling', 'Zipper_(clothing)',
-                  'Computer_keyboard', 'Finger_snapping']
+    #categories = ['Marimba_and_xylophone', 'Scissors', 'Gong', 'Printer', 'Keys_jangling', 'Zipper_(clothing)',
+    #              'Computer_keyboard', 'Finger_snapping']
 
     categories = ()
     gen_params = {'categories': categories,
@@ -165,7 +165,8 @@ def train():
     model.compile(loss=loss_fn, optimizer=adam(lr=1e-5))
     model.fit_generator(generator=data_gen, epochs=10, callbacks=callbacks)
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"] = '2'
     setup_logging('train.log')
     train()
